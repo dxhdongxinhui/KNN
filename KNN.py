@@ -1,83 +1,116 @@
-# -*- coding: utf-8 -*-
+# coding=utf-8
 from numpy import *
 import operator
-from os import listdir
+import os
 
-#分类器
-#参数：inX（用于分类）dataSet（训练样本集）
-#参数：labels（标签向量）k（选择最近邻居的数目）
-#返回值：inX的标签    
-def classify0(inX, dataSet, labels, k):
-    #矩阵的行数，在这里即是训练样本集数据的个数
-    dataSetSize = dataSet.shape[0]
-    #构建一个将inX按行复制dataSetSize次的矩阵
-    #并减去训练样本集构成的矩阵
-    diffMat = tile(inX, (dataSetSize,1))-dataSet
-    sqDiffMat = diffMat**2
-    #矩阵每一行相加
-    sqDistances = sqDiffMat.sum(axis=1)
-    distances = sqDistances**0.5
-    #从小到大排序，返回下标
-    sortedDistIndicies = distances.argsort()
-    #初始化字典
-    classCount = {}
-    #取最近的k个数据点并计数
+
+# KNN分类核心方法
+def kNNClassify(newInput, dataSet, labels, k):
+    numSamples = dataSet.shape[0]  # shape[0]代表行数
+
+    # 计算欧式距离
+    # tile(A, reps): 将A重复reps次来构造一个矩阵
+    # the following copy numSamples rows for dataSet
+    diff = tile(newInput, (numSamples, 1)) - dataSet  # Subtract element-wise
+    squaredDiff = diff ** 2  # squared for the subtract
+    squaredDist = sum(squaredDiff, axis = 1)   # sum is performed by row
+    distance = squaredDist ** 0.5
+
+    # 对距离排序
+    # argsort()返回排序后的索引
+    sortedDistIndices = argsort(distance)
+
+    classCount = {}  # 定义一个空的字典
     for i in range(k):
-        voteIlabel = labels[sortedDistIndicies[i]]
-        classCount[voteIlabel] = classCount.get(voteIlabel,0)+1
-    #排序，从大到小
-    sortedClassCount = sorted(classCount.items(),key=operator.itemgetter(1),reverse=True)
-    return sortedClassCount[0][0]
+        # 选择k个最小距离
+        voteLabel = labels[sortedDistIndices[i]]
 
-#将图像转化成向量
-#即将32*32的图像矩阵为1*1024的向量
-#参数：文件名
-#返回值：1*1024向量
-def img2vector(filename):
-    #初始化返回向量
-    returnVect = zeros((1,1024))
-    fr = open(filename)
-    for i in range(32):
-        lineStr = fr.readline()
-        for j in range(32):
-            returnVect[0,32*i+j] = int(lineStr[j])
-    return returnVect
+        # 计算类别的出现次数
 
-#手写数字识别系统
-def handwritingClassTest():
-    hwLabels = []
-    #列出测试集目录里的文件名
-    trainingFileList = listdir('trainingDigits')
-    #文件名个数
-    m = len(trainingFileList)
-    #初始化m*1024矩阵
-    trainingMat = zeros((m,1024))
-    for i in range(m):
-        fileNameStr = trainingFileList[i]
-        #形如0_0.txt得到0_0
-        fileStr = fileNameStr.split('.')[0]
-        #得到真实数值
-        classNumStr = int(fileStr.split('_')[0])
-        #拓展真实值数组
-        hwLabels.append(classNumStr)
-        #利用测试集构造矩阵
-        trainingMat[i,:] = img2vector('trainingDigits/%s' % fileNameStr)
-    testFileList = listdir('testDigits')
-    errorCount = 0.0
-    mTest = len(testFileList)
-    for i in range(mTest):
-        fileNameStr = testFileList[i]
-        fileStr = fileNameStr.split('.')[0]
-        classNumStr = int(fileStr.split('_')[0])
-        #调用img2vector函数将32*32图像矩阵转化为1*1024向量
-        vectorUnderTest = img2vector('testDigits/%s' % fileNameStr)
-        #调用classify0函数获取标签
-        classifierResult = classify0(vectorUnderTest, trainingMat, hwLabels, 3)
-        print("正确结果：%d 预测结果：%d" % (classNumStr, classifierResult))
-        if (classifierResult != classNumStr): errorCount += 1.0
-    print("\n预测错误数目: %d" % errorCount)
-    print("\n错误率: %f" % (errorCount/float(mTest)))
-    
+        classCount[voteLabel] = classCount.get(voteLabel, 0) + 1
+
+    #  返回出现次数最多的类别作为分类结果
+    maxCount = 0
+    for key, value in classCount.items():
+        if value > maxCount:
+            maxCount = value
+            maxIndex = key
+
+    return maxIndex
+
+# 将图片转换为向量
+def  img2vector(filename):
+    rows = 32
+    cols = 32
+    imgVector = zeros((1, rows * cols))
+    fileIn = open(filename)
+    for row in range(rows):
+        lineStr = fileIn.readline()
+        for col in range(cols):
+            imgVector[0, row * 32 + col] = int(lineStr[col])
+
+    return imgVector
+
+# 加载数据集
+def loadDataSet():
+    # # step 1: 读取训练数据集
+    print( "---Getting training set...")
+    dataSetDir = ''
+    trainingFileList = os.listdir(dataSetDir + 'trainingDigits')  # 加载测试数据
+    numSamples = len(trainingFileList)
+
+    train_x = zeros((numSamples, 1024))
+    train_y = []
+    for i in range(numSamples):
+        filename = trainingFileList[i]
+
+        # get train_x
+        train_x[i, :] = img2vector(dataSetDir + 'trainingDigits/%s' % filename)
+
+        # get label from file name such as "1_18.txt"
+        label = int(filename.split('_')[0]) # return 1
+        train_y.append(label)
+
+    # # step 2:读取测试数据集
+    print("---Getting testing set...")
+    testingFileList = os.listdir(dataSetDir + 'testDigits') # load the testing set
+    numSamples = len(testingFileList)
+    test_x = zeros((numSamples, 1024))
+    test_y = []
+    for i in range(numSamples):
+        filename = testingFileList[i]
+
+        # get train_x
+        test_x[i, :] = img2vector(dataSetDir + 'testDigits/%s' % filename)
+
+        # get label from file name such as "1_18.txt"
+        label = int(filename.split('_')[0]) # return 1
+        test_y.append(label)
+
+    return train_x, train_y, test_x, test_y
+
+# 手写识别主流程
+def testHandWritingClass():
+    #  加载数据
+    print(" load data...")
+    train_x, train_y, test_x, test_y = loadDataSet()
+
+    # 模型训练.
+    print ("training...")
+    pass
+
+    # 测试
+    print("testing...")
+    numTestSamples = test_x.shape[0]
+    matchCount = 0
+    for i in range(numTestSamples):
+        predict = kNNClassify(test_x[i], train_x, train_y, 3)
+        if predict == test_y[i]:
+            matchCount += 1
+    accuracy = float(matchCount) / numTestSamples
+
+    #  输出结果
+    print('The classify accuracy is: %.2f%%' % (accuracy * 100))
+
 if __name__ == '__main__':
-    handwritingClassTest()
-    
+    testHandWritingClass()
